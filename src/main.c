@@ -2,11 +2,16 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "cpu.h"
+#include "bus.h"
 
 int main(int argc, char *argv[]) {
 
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <rom.gb>\n", argv[0]);
+        return 1;
+    }
 
-    FILE *file = fopen("rom.gb", "rb");
+    FILE *file = fopen(argv[1], "rb");
 
     if (file == NULL) {
         perror("fopen");
@@ -14,30 +19,42 @@ int main(int argc, char *argv[]) {
     }
 
     fseek(file, 0, SEEK_END);
-    unsigned long size = ftell(file);
+    long size = ftell(file);
     rewind(file);
 
-    uint8_t *data = malloc(size);
+    if (size < 0) {
+        perror("ftell");
+        fclose(file);
+        return 1;
+    }
+
+    uint8_t *data = malloc((size_t)size);
     if (data == NULL) {
         fclose(file);
         return 1;
     }
 
-    size_t bytes_read = fread(data, 1, size, file);
+    size_t bytes_read = fread(data, 1, (size_t)size, file);
 
     if (bytes_read != (size_t)size) {
         fprintf(stderr, "Failed to read entire file\n");
+        free(data);
+        fclose(file);
+        return 1;
     }
 
     fclose(file);
 
-    // printf("File size: %ld bytes\n", size);
-
     CPU cpu;
+    Bus bus;
+
+    bus.memory = data;
+
     reset(&cpu);
 
-    for(int i = 0; i < 100; i++) {
-        tick(&cpu, data);
+    for (int i=0;i<10000000;i++) {
+        tick(&cpu, &bus);
+        print_registers(&cpu);
     }
 
     free(data);
