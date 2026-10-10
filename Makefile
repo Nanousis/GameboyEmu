@@ -1,4 +1,4 @@
-CC := gcc
+CC := clang
 
 TARGET := gameboy
 
@@ -6,13 +6,18 @@ SRC_DIR := src
 INC_DIR := include
 BUILD_DIR := build
 
-CFLAGS := -std=c23 -Wall -Wextra -Wpedantic -Wshadow \
-          -I$(INC_DIR)
+SDL_CFLAGS := $(shell sdl2-config --cflags)
+SDL_LIBS := $(shell sdl2-config --libs)
 
-DEBUG_FLAGS := -O0 -g3
+CFLAGS := -std=c23 -Wall -Wextra -Wpedantic -Wshadow \
+          -I$(INC_DIR) $(SDL_CFLAGS)
+
+DEBUG_FLAGS := -O0 -g3 -fsanitize=address,undefined \
+               -fno-omit-frame-pointer
+
 RELEASE_FLAGS := -O2 -DNDEBUG
 
-LDFLAGS :=
+LDFLAGS := $(SDL_LIBS)
 
 SRCS := $(shell find $(SRC_DIR) -name '*.c')
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
@@ -23,6 +28,7 @@ DEPS := $(OBJS:.o=.d)
 all: debug
 
 debug: CFLAGS += $(DEBUG_FLAGS)
+debug: LDFLAGS += -fsanitize=address,undefined
 debug: $(TARGET)
 
 release: CFLAGS += $(RELEASE_FLAGS)
@@ -41,6 +47,6 @@ run: debug
 clean:
 	rm -rf $(BUILD_DIR) $(TARGET)
 
-rebuild: clean debug
+rebuild: clean all
 
 -include $(DEPS)

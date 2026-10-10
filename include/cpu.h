@@ -20,7 +20,7 @@ typedef struct CPU {
 }CPU;
 
 uint8_t decode(CPU *cpu, uint8_t opcode, Bus *bus);
-uint8_t fetch(CPU *cpu, uint8_t *memory);
+uint8_t fetch(CPU *cpu, Bus *bus);
 uint8_t decode_cb(CPU *cpu, uint8_t opcode, Bus *bus);
 void tick(CPU *cpu, Bus *bus);
 void reset(CPU *cpu);

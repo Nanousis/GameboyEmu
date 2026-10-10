@@ -5,6 +5,29 @@
 
 uint8_t read_memory_8(Bus *bus, uint16_t address)
 {
+
+    /*
+     * Cartridge ROM.
+     */
+    if (address <= 0x7FFF) {
+        return cartridge_read(
+            &bus->cartridge,
+            address
+        );
+    }
+
+    /*
+     * External cartridge RAM.
+     */
+    if (address >= 0xA000 &&
+        address <= 0xBFFF) {
+        return cartridge_read(
+            &bus->cartridge,
+            address
+        );
+    }
+
+
     switch (address) {
         case 0xFF00: 
             uint8_t result = 0xCF;
@@ -124,8 +147,35 @@ uint16_t read_memory_16(Bus *bus, uint16_t address)
 
 void write_memory_8(Bus *bus, uint16_t address, uint8_t value)
 {
-    switch (address) {
+    /*
+     * Mapper registers.
+     */
+    if (address <= 0x7FFF) {
+        cartridge_write(
+            &bus->cartridge,
+            address,
+            value
+        );
 
+        return;
+    }
+
+    /*
+     * External cartridge RAM.
+     */
+    if (address >= 0xA000 &&
+        address <= 0xBFFF) {
+
+        cartridge_write(
+            &bus->cartridge,
+            address,
+            value
+        );
+
+        return;
+    }
+
+    switch (address) {
         case 0xFF00:
             /*
             * Bit 4 low = select D-pad.
@@ -213,7 +263,18 @@ void write_memory_8(Bus *bus, uint16_t address, uint8_t value)
         case 0xFF45: // LYC
             bus->ppu.lyc = value;
             return;
+        case 0xFF46: { // OAM DMA
+            bus->memory[0xFF46] = value;
 
+            uint16_t source = (uint16_t)value << 8;
+
+            for (uint16_t i = 0; i < 0xA0; i++) {
+                bus->memory[0xFE00 + i] =
+                    read_memory_8(bus, source + i);
+            }
+
+            return;
+        }
         case 0xFF47: // BGP
             bus->ppu.bgp = value;
             return;

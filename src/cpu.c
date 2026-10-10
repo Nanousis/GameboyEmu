@@ -34,7 +34,7 @@ void tick(CPU *cpu, Bus *bus) {
         cycles_taken = 4;
         goto finish_tick;
     }
-    uint8_t opcode = fetch(cpu, bus->memory);
+    uint8_t opcode = fetch(cpu, bus);
     cycles_taken = decode(cpu, opcode, bus);
     finish_tick:
     cpu->cycles += cycles_taken;
@@ -1503,10 +1503,10 @@ uint8_t decode_cb(CPU *cpu, uint8_t opcode, Bus *bus) {
     return cycles_taken;
 }
 
-uint8_t fetch(CPU *cpu, uint8_t *memory) {
+uint8_t fetch(CPU *cpu, Bus *bus) {
     // Fetch the next instruction from memory at the program counter (PC)
     // For now, we will just INC  rement the PC to simulate fetching an instruction
-    uint8_t instruction = memory[cpu->PC];
+    uint8_t instruction = read_memory_8(bus, cpu->PC);
     return instruction;
 }
 void push_stack(CPU *cpu, uint16_t value, Bus *bus) {
@@ -1575,20 +1575,20 @@ uint8_t service_interrupt(CPU *cpu, Bus *bus, uint8_t pending)
     return 1;
 }
 
-void reset(CPU *cpu){
-    cpu->AF =0x00;
-    cpu->BC =0x00;
-    cpu->DE =0x00;
-    cpu->HL =0x00;
-    cpu->SP =0x00;
-    cpu->PC = 0x100; // Start execution at address 0x100
-    cpu->SP = 0xFFFE; // Initialize stack pointer
-    cpu->cycles = 0; // Reset cycle count
-    cpu->ime = 0; // Disable interrupts
-    cpu->halted = 0; // Not halted
-    cpu->ime_enable_delay = 0; // No delay for enabling interrupts
-}
+void reset(CPU *cpu) {
+    cpu->AF = 0x01B0;
+    cpu->BC = 0x0013;
+    cpu->DE = 0x00D8;
+    cpu->HL = 0x014D;
 
+    cpu->SP = 0xFFFE;
+    cpu->PC = 0x0100;
+
+    cpu->cycles = 0;
+    cpu->ime = 0;
+    cpu->ime_enable_delay = 0;
+    cpu->halted = 0;
+}
 void print_registers(CPU *cpu) {
     DEBUG_PRINTF("Cycles: %u AF: 0x%04X, BC: 0x%04X, DE: 0x%04X, HL: 0x%04X, SP: 0x%04X, PC: 0x%04X\n",
            cpu->cycles, cpu->AF, cpu->BC, cpu->DE, cpu->HL, cpu->SP, cpu->PC);

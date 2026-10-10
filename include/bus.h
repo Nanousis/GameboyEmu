@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "timer.h"
 #include "ppu.h"
+#include "cartridge.h"
 #define COLOR_RED     "\x1b[31m"
 #define COLOR_GREEN   "\x1b[32m"
 #define COLOR_YELLOW  "\x1b[33m"
@@ -29,6 +30,8 @@ typedef struct Bus {
     Timer timer;
     PPU ppu;
     Joypad joypad;
+    Cartridge cartridge;
+
 
     uint8_t IF;
     uint8_t IE;

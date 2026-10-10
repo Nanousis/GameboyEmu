@@ -36,29 +36,39 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    uint8_t *data = calloc(0x10000, 1);
+    size_t rom_size = (size_t)size;
 
-    if (!data) {
+    uint8_t *rom = malloc(rom_size);
+
+    if (!rom) {
         fclose(file);
         return 1;
     }
 
-    size_t rom_size = (size_t)size;
+    size_t bytes_read =
+        fread(
+            rom,
+            1,
+            rom_size,
+            file
+        );
+    if (bytes_read != rom_size) {
+        fprintf(stderr, "Failed to read entire ROM\n");
 
-    if (rom_size > 0x8000)
-        rom_size = 0x8000;  // for now, before implementing MBCs
-
-    size_t bytes_read = fread(data, 1, rom_size, file);
-
-    if (bytes_read != (size_t)rom_size) {
-        fprintf(stderr, "Failed to read entire file\n");
-        free(data);
+        free(rom);
         fclose(file);
+
         return 1;
     }
 
     fclose(file);
+    uint8_t *memory =
+        calloc(0x10000, 1);
 
+    if (!memory) {
+        free(rom);
+        return 1;
+    }
     // SDL STUFF
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -83,8 +93,12 @@ int main(int argc, char *argv[]) {
 
     SDL_Renderer *renderer = SDL_CreateRenderer(
         window, -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        // SDL_RENDERER_ACCELERATED
     );
+    // SDL_Renderer *renderer = SDL_CreateRenderer(
+    //     window, -1,
+    // );
 
     if (!renderer) {
         fprintf(stderr, "Renderer: %s\n", SDL_GetError());
@@ -134,11 +148,23 @@ int main(int argc, char *argv[]) {
     SDL_RenderPresent(renderer);
 
 
-    CPU cpu;
-    Bus bus;
+    CPU cpu={0};
+    Bus bus={0};
     reset_bus(&bus);
-    bus.memory = data;
+    bus.memory = memory;
 
+    if (!cartridge_init(
+            &bus.cartridge,
+            rom,
+            rom_size)) {
+
+        fprintf(stderr, "Failed to initialize cartridge\n");
+
+        free(memory);
+        free(rom);
+
+        return 1;
+    }
     reset(&cpu);
 
     // for (int i=0;i<1000000000;i++) {
@@ -226,6 +252,7 @@ int main(int argc, char *argv[]) {
             }
         }
         while(!bus.ppu.render_frame) {
+        // for (int i=0;i<20;i++) {
             tick(&cpu, &bus);
         }
         bus.ppu.render_frame = 0;
@@ -246,8 +273,8 @@ int main(int argc, char *argv[]) {
         SDL_RenderPresent(renderer);
         // print_registers(&cpu);
     }
-    free(data);
-
+    cartridge_destroy(&bus.cartridge);
+    free(memory);
 
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
