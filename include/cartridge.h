@@ -6,6 +6,7 @@
 typedef enum {
     CART_ROM_ONLY,
     CART_MBC1,
+    CART_MBC3,
     CART_UNSUPPORTED
 } CartridgeController;
 
@@ -33,6 +34,8 @@ typedef struct {
     uint8_t banking_mode;
 
     uint8_t has_battery;
+    uint8_t mbc3_rom_bank;
+    uint8_t mbc3_ram_bank;
 } Cartridge;
 
 
@@ -41,6 +44,8 @@ int cartridge_init(
     uint8_t *rom,
     size_t rom_size
 );
+int cartridge_save(Cartridge *cart, const char *path);
+int cartridge_load_save(Cartridge *cart, const char *path);
 
 void cartridge_destroy(Cartridge *cart);
 

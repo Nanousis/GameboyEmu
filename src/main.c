@@ -21,6 +21,11 @@ int main(int argc, char *argv[]) {
 
     FILE *file = fopen(argv[1], "rb");
 
+    char file_name[64];
+    strncpy(file_name, argv[1], sizeof(file_name) - 2);
+    file_name[sizeof(file_name) - 2] = '\0';
+
+    printf("Loading ROM: %s\n", file_name);
     if (file == NULL) {
         perror("fopen");
         return 1;
@@ -93,8 +98,8 @@ int main(int argc, char *argv[]) {
 
     SDL_Renderer *renderer = SDL_CreateRenderer(
         window, -1,
-            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
-        // SDL_RENDERER_ACCELERATED
+            // SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+        SDL_RENDERER_ACCELERATED
     );
     // SDL_Renderer *renderer = SDL_CreateRenderer(
     //     window, -1,
@@ -165,6 +170,11 @@ int main(int argc, char *argv[]) {
 
         return 1;
     }
+
+    char save_file_path[128];
+    snprintf(save_file_path, sizeof(save_file_path), "%s.sav", file_name);
+    cartridge_load_save(&bus.cartridge, save_file_path);
+
     reset(&cpu);
 
     // for (int i=0;i<1000000000;i++) {
@@ -209,6 +219,9 @@ int main(int argc, char *argv[]) {
 
                     case SDLK_RETURN:
                         bus.joypad.start = 1;
+                        break;
+                    case SDLK_ESCAPE:
+                        running = false;
                         break;
                 }
             }
@@ -273,7 +286,15 @@ int main(int argc, char *argv[]) {
         SDL_RenderPresent(renderer);
         // print_registers(&cpu);
     }
+    if (bus.cartridge.has_battery) {
+        printf("Saving cartridge RAM to %s\n", save_file_path);
+        if (!cartridge_save(&bus.cartridge, save_file_path)) {
+            fprintf(stderr, "Failed to save cartridge RAM\n");
+        }
+    }
+
     cartridge_destroy(&bus.cartridge);
+
     free(memory);
 
     SDL_DestroyTexture(texture);

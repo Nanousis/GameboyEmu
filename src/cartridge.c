@@ -69,7 +69,12 @@ int cartridge_init(
             cart->controller = CART_MBC1;
             cart->has_battery = 1;
             break;
-
+        case 0x11: // MBC3
+        case 0x12: // MBC3 + RAM
+        case 0x13: // MBC3 + RAM + BATTERY
+            cart->controller = CART_MBC3;
+            cart->has_battery = (cartridge_type == 0x13);
+            break;
         default:
             fprintf(
                 stderr,
@@ -80,7 +85,8 @@ int cartridge_init(
             cart->controller = CART_UNSUPPORTED;
             return 0;
     }
-
+    cart->mbc3_rom_bank = 1;
+    cart->mbc3_ram_bank = 0;
     cart->ram_size =
         ram_size_from_header(ram_size_code);
 
@@ -238,6 +244,98 @@ static void mbc1_write_ram(
 
     cart->ram[offset] = value;
 }
+static uint8_t mbc3_read(Cartridge *cart, uint16_t address)
+{
+    // Fixed ROM bank 0
+    if (address < 0x4000) {
+        return address < cart->rom_size
+            ? cart->rom[address]
+            : 0xFF;
+    }
+
+    // Switchable ROM banks
+    if (address < 0x8000) {
+        size_t bank = cart->mbc3_rom_bank & 0x7F;
+
+        if (bank == 0)
+            bank = 1;
+
+        size_t offset =
+            bank * 0x4000 + (address - 0x4000);
+
+        return offset < cart->rom_size
+            ? cart->rom[offset]
+            : 0xFF;
+    }
+
+    // External cartridge RAM
+    if (address >= 0xA000 && address <= 0xBFFF) {
+        if (!cart->ram_enabled || !cart->ram)
+            return 0xFF;
+
+        if (cart->mbc3_ram_bank > 3)
+            return 0xFF;
+
+        size_t offset =
+            (size_t)cart->mbc3_ram_bank * 0x2000 +
+            (address - 0xA000);
+
+        return offset < cart->ram_size
+            ? cart->ram[offset]
+            : 0xFF;
+    }
+
+    return 0xFF;
+}
+static void mbc3_write(
+    Cartridge *cart,
+    uint16_t address,
+    uint8_t value
+) {
+    // RAM enable
+    if (address < 0x2000) {
+        cart->ram_enabled =
+            (value & 0x0F) == 0x0A;
+        return;
+    }
+
+    // Select ROM bank
+    if (address < 0x4000) {
+        cart->mbc3_rom_bank = value & 0x7F;
+
+        if (cart->mbc3_rom_bank == 0)
+            cart->mbc3_rom_bank = 1;
+
+        return;
+    }
+
+    // Select RAM bank or RTC register
+    if (address < 0x6000) {
+        cart->mbc3_ram_bank = value;
+        return;
+    }
+
+    // RTC latch: not needed for Pokemon Red
+    if (address < 0x8000) {
+        return;
+    }
+
+    // External RAM write
+    if (address >= 0xA000 && address <= 0xBFFF) {
+        if (!cart->ram_enabled || !cart->ram)
+            return;
+
+        if (cart->mbc3_ram_bank > 3)
+            return;
+
+        size_t offset =
+            (size_t)cart->mbc3_ram_bank * 0x2000 +
+            (address - 0xA000);
+
+        if (offset < cart->ram_size)
+            cart->ram[offset] = value;
+    }
+}
 uint8_t cartridge_read(
     Cartridge *cart,
     uint16_t address
@@ -295,7 +393,8 @@ uint8_t cartridge_read(
 
             break;
 
-
+        case CART_MBC3:
+            return mbc3_read(cart, address);
         default:
             break;
     }
@@ -406,9 +505,53 @@ void cartridge_write(
             }
 
             return;
-
+        case CART_MBC3:
+            mbc3_write(cart, address, value);
+            return;
 
         default:
             return;
     }
+}
+int cartridge_save(Cartridge *cart, const char *path)
+{
+    if (!cart->has_battery || !cart->ram)
+        return 0;
+
+    FILE *file = fopen(path, "wb");
+
+    if (!file)
+        return 0;
+
+    size_t written = fwrite(
+        cart->ram,
+        1,
+        cart->ram_size,
+        file
+    );
+
+    int closed = fclose(file);
+
+    return written == cart->ram_size && closed == 0;
+}
+int cartridge_load_save(Cartridge *cart, const char *path)
+{
+    if (!cart->has_battery || !cart->ram)
+        return 0;
+
+    FILE *file = fopen(path, "rb");
+
+    if (!file)
+        return 0;
+
+    size_t read = fread(
+        cart->ram,
+        1,
+        cart->ram_size,
+        file
+    );
+
+    int closed = fclose(file);
+
+    return read == cart->ram_size && closed == 0;
 }

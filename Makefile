@@ -15,7 +15,7 @@ CFLAGS := -std=c23 -Wall -Wextra -Wpedantic -Wshadow \
 DEBUG_FLAGS := -O0 -g3 -fsanitize=address,undefined \
                -fno-omit-frame-pointer
 
-RELEASE_FLAGS := -O2 -DNDEBUG
+RELEASE_FLAGS := -O2 -DNDEBUG -g
 
 LDFLAGS := $(SDL_LIBS)
 
