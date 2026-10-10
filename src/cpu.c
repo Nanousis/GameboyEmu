@@ -39,6 +39,7 @@ void tick(CPU *cpu, Bus *bus) {
     finish_tick:
     cpu->cycles += cycles_taken;
     timer_tick(bus, cycles_taken);
+    ppu_tick(&bus->ppu, bus, cycles_taken);
     if (cpu->ime_enable_delay > 0) {
         cpu->ime_enable_delay--;
 
@@ -46,8 +47,6 @@ void tick(CPU *cpu, Bus *bus) {
             cpu->ime = 1;
         }
     }
-
-    
 }
 
 uint8_t decode(CPU *cpu, uint8_t opcode, Bus *bus) {
