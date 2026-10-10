@@ -7,7 +7,6 @@ INC_DIR := include
 BUILD_DIR := build
 
 CFLAGS := -std=c23 -Wall -Wextra -Wpedantic -Wshadow \
-          -Wconversion \
           -I$(INC_DIR)
 
 DEBUG_FLAGS := -O0 -g3

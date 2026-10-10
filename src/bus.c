@@ -2,9 +2,28 @@
 #include <stdint.h>
 #include "bus.h"
 
+
 uint8_t read_memory_8(Bus *bus, uint16_t address)
 {
-    return bus->memory[address];
+    switch (address) {
+        case 0xFF04:
+            return bus->timer.div_counter >> 8;
+
+        case 0xFF05:
+            return bus->timer.TIMA;
+
+        case 0xFF06:
+            return bus->timer.TMA;
+
+        case 0xFF07:
+            return bus->timer.TAC | 0xF8;
+        case 0xFF0F:      // IF - Interrupt flags
+            return bus->IF;
+        case 0xFFFF:      // IE - Interrupt enable
+            return bus->IE;
+        default:
+            return bus->memory[address];
+    }
 }
 
 uint16_t read_memory_16(Bus *bus, uint16_t address)
@@ -37,13 +56,28 @@ void write_memory_8(Bus *bus, uint16_t address, uint8_t value)
                 fflush(stdout);
             }
             break;
+        case 0xFF04: // DIV
+            bus->timer.div_counter = 0;
+            return;
+
+        case 0xFF05: // TIMA
+            bus->timer.TIMA = value;
+            return;
+
+        case 0xFF06: // TMA
+            bus->timer.TMA = value;
+            return;
+
+        case 0xFF07: // TAC
+            bus->timer.TAC = value & 0x07;
+            return;
 
         case 0xFF0F:      // IF - Interrupt flags
-            bus->memory[address] = value;
+            bus->IF = value;
             break;
 
         case 0xFFFF:      // IE - Interrupt enable
-            bus->memory[address] = value;
+            bus->IE = value;
             break;
 
         default:
@@ -56,4 +90,8 @@ void write_memory_16(Bus *bus, uint16_t address, uint16_t value)
 {
     write_memory_8(bus, address, value & 0xFF);
     write_memory_8(bus, address + 1, value >> 8);
+}
+void reset_bus(Bus *bus) {
+    bus->IF = 0xE1; // Reset IF register to its default value
+    bus->IE = 0x00; // Reset IE register to its default value
 }

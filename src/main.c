@@ -28,15 +28,21 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    uint8_t *data = malloc((size_t)size);
-    if (data == NULL) {
+    uint8_t *data = calloc(0x10000, 1);
+
+    if (!data) {
         fclose(file);
         return 1;
     }
 
-    size_t bytes_read = fread(data, 1, (size_t)size, file);
+    size_t rom_size = (size_t)size;
 
-    if (bytes_read != (size_t)size) {
+    if (rom_size > 0x8000)
+        rom_size = 0x8000;  // for now, before implementing MBCs
+
+    size_t bytes_read = fread(data, 1, rom_size, file);
+
+    if (bytes_read != (size_t)rom_size) {
         fprintf(stderr, "Failed to read entire file\n");
         free(data);
         fclose(file);
@@ -47,7 +53,7 @@ int main(int argc, char *argv[]) {
 
     CPU cpu;
     Bus bus;
-
+    reset_bus(&bus);
     bus.memory = data;
 
     reset(&cpu);

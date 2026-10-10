@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "cpu.h"
 #include "bus.h"
+#include "timer.h"
 
 // #define DEBUG_PRINTS
 
@@ -19,11 +20,37 @@
 #define check_bit(value, bit) (((value) >> (bit)) & 1U)
 void tick(CPU *cpu, Bus *bus) {
 
+    uint8_t cycles_taken;
+    uint8_t pending_interrupts = get_pending_interrupts(bus);
+    if (pending_interrupts) {
+
+        cpu->halted = 0; // Wake up from HALT if any interrupt is pending
+        if(service_interrupt(cpu, bus, pending_interrupts)) {
+            cycles_taken = 20; // Interrupt entry costs 20 T-cycles
+            goto finish_tick;
+        }
+    }
+    if (cpu->halted) {
+        cycles_taken = 4;
+        goto finish_tick;
+    }
     uint8_t opcode = fetch(cpu, bus->memory);
-    decode(cpu, opcode, bus);
+    cycles_taken = decode(cpu, opcode, bus);
+    finish_tick:
+    cpu->cycles += cycles_taken;
+    timer_tick(bus, cycles_taken);
+    if (cpu->ime_enable_delay > 0) {
+        cpu->ime_enable_delay--;
+
+        if (cpu->ime_enable_delay == 0) {
+            cpu->ime = 1;
+        }
+    }
+
+    
 }
 
-void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
+uint8_t decode(CPU *cpu, uint8_t opcode, Bus *bus) {
     // Decode the opcode and execute the corresponding instruction
     // For now, we will just print the opcode
     // DEBUG_PRINTF("Opcode: 0x%02X\n", opcode);
@@ -32,7 +59,6 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
     DEBUG_PRINTF("0x%X ", cpu->PC);
     int8_t offset;
     uint8_t a;
-    int16_t mask;
     uint8_t taken = 0;
     uint8_t result_8;
     uint16_t result;
@@ -308,6 +334,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                 case 0b110110:
                 case 0b111110:
                     result = read_memory_8(bus, cpu->PC + 1);
+                    cycles_taken = 8;
                     switch ((opcode >> 3) & 0b111){
                         case 0b000: // B
                             cpu->BC = (cpu->BC & 0x00FF) | ((uint16_t)result << 8);
@@ -329,16 +356,17 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                             break;
                         case 0b110: // [HL]
                             write_memory_8(bus, cpu->HL, result);
+                            cycles_taken = 12;
                             break;
                         case 0b111: // A
                             cpu->AF = (cpu->AF & 0x00FF) | ((uint16_t)result << 8);
                             break;
                     }
-                    cycles_taken = 8;
+                    
                     newPC = cpu->PC + 2; // Increment PC by 2 for the next instruction (1 for opcode + 1 for imm8)
                     break;
                 case 0b000111:{ // rlca.
-                    uint8_t a = cpu->AF >> 8;
+                    a = cpu->AF >> 8;
                     uint8_t carry = a >> 7;
 
                     a = (a << 1) | carry;
@@ -347,7 +375,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                     break;
                 }
                 case 0b001111: { // RRCA
-                    uint8_t a = cpu->AF >> 8;
+                    a = cpu->AF >> 8;
                     uint8_t carry = a & 0x01;
 
                     a = (a >> 1) | (carry << 7);
@@ -360,7 +388,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                 }
 
                 case 0b010111: { // RLA
-                    uint8_t a = cpu->AF >> 8;
+                    a = cpu->AF >> 8;
                     uint8_t old_carry = (cpu->AF >> 4) & 0x01;
                     uint8_t new_carry = (a >> 7) & 0x01;
 
@@ -374,7 +402,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                 }
 
                 case 0b011111: { // RRA
-                    uint8_t a = cpu->AF >> 8;
+                    a = cpu->AF >> 8;
                     uint8_t old_carry = (cpu->AF >> 4) & 0x01;
                     uint8_t new_carry = a & 0x01;
 
@@ -388,7 +416,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                 }
 
                 case 0b100111: { // DAA
-                    uint8_t a = cpu->AF >> 8;
+                    a = cpu->AF >> 8;
                     uint8_t f = cpu->AF & 0xF0;
 
                     uint8_t n = (f >> 6) & 1;
@@ -445,7 +473,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                 }
 
                 case 0b101111: { // CPL
-                    uint8_t a = cpu->AF >> 8;
+                    a = cpu->AF >> 8;
                     uint8_t f = cpu->AF & 0xF0;
 
                     a = ~a;
@@ -464,7 +492,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                 }
 
                 case 0b110111: { // SCF
-                    uint8_t a = cpu->AF >> 8;
+                    a = cpu->AF >> 8;
                     uint8_t f = cpu->AF & 0xF0;
 
                     // Z unchanged
@@ -482,7 +510,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                 }
 
                 case 0b111111: { // CCF
-                    uint8_t a = cpu->AF >> 8;
+                    a = cpu->AF >> 8;
                     uint8_t f = cpu->AF & 0xF0;
 
                     // Z unchanged
@@ -543,7 +571,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
             switch(opcode & 0b111111) {
                 case 0b110110:
                     DEBUG_PRINTF("HALT instruction encountered\n");
-                    not_implemented("HALT");
+                    cpu->halted = 1; // everyone keeps talking about the halt bug, shjould look into it
                     break;
                 default:
                     switch(opcode&0b111) { // ld r8, r8
@@ -573,7 +601,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                             break;
                         case 0b110: // [HL]
                             DEBUG_PRINTF("LD r8, [HL]\n");
-                            cycles_taken = 12;
+                            cycles_taken += 4;
                             result_8 = read_memory_8(bus, cpu->HL);
                             break;
                         case 0b111: // A
@@ -1058,7 +1086,6 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                     cpu->ime = 1; // Enable interrupts
                     result = pop_stack(cpu, bus);
                     newPC = result;
-                    not_implemented("reti");
                     cycles_taken = 16;
                     break;
                 case 0b000010: // JP cond, imm16
@@ -1291,15 +1318,13 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
                     DEBUG_PRINTF("LD SP, HL\n");
                     break;
                 // sixth part of the block 3 instructions -> ei / di
-                case 0b110011: // di
-                    DEBUG_PRINTF("di\n");
-                    not_implemented("di");
+                case 0b110011: // DI
                     cpu->ime = 0;
+                    cpu->ime_enable_delay = 0;
                     break;
                 case 0b111011: // ei
                     DEBUG_PRINTF("ei\n");
-                    cpu->ime = 1;
-                    not_implemented("ei");
+                    cpu->ime_enable_delay = 2;
                     break;
                 case (0xCB & 0b111111):
                     cycles_taken = decode_cb(cpu, read_memory_8(bus, cpu->PC + 1), bus);
@@ -1313,7 +1338,7 @@ void decode(CPU *cpu, uint8_t opcode, Bus *bus) {
             break;
     }
     cpu->PC = newPC;
-    cpu->cycles += cycles_taken;
+    return cycles_taken;
 }
 
 uint8_t decode_cb(CPU *cpu, uint8_t opcode, Bus *bus) {
@@ -1497,6 +1522,60 @@ uint16_t pop_stack(CPU *cpu, Bus *bus) {
     return value;
 }
 
+uint8_t get_pending_interrupts(Bus *bus)
+{
+    uint8_t ie = read_memory_8(bus, 0xFFFF);
+    uint8_t interrupt_flags = read_memory_8(bus, 0xFF0F);
+
+    return ie & interrupt_flags & 0x1F;
+}
+
+uint8_t service_interrupt(CPU *cpu, Bus *bus, uint8_t pending)
+{
+    if (!cpu->ime || pending == 0)
+        return 0;
+
+    cpu->ime = 0;
+    cpu->halted = 0;
+
+    uint8_t bit;
+    uint16_t vector;
+
+    if (pending & (1 << 0)) {
+        bit = 0;
+        vector = 0x0040;
+    }
+    else if (pending & (1 << 1)) {
+        bit = 1;
+        vector = 0x0048;
+    }
+    else if (pending & (1 << 2)) {
+        bit = 2;
+        vector = 0x0050;
+    }
+    else if (pending & (1 << 3)) {
+        bit = 3;
+        vector = 0x0058;
+    }
+    else {
+        bit = 4;
+        vector = 0x0060;
+    }
+
+    // Clear this interrupt request from IF
+    uint8_t interrupt_flags = read_memory_8(bus, 0xFF0F);
+    interrupt_flags &= ~(1 << bit);
+    write_memory_8(bus, 0xFF0F, interrupt_flags);
+
+    // Save where we were
+    push_stack(cpu, cpu->PC, bus);
+
+    // Jump to ISR
+    cpu->PC = vector;
+
+    return 1;
+}
+
 void reset(CPU *cpu){
     cpu->AF =0x00;
     cpu->BC =0x00;
@@ -1507,12 +1586,16 @@ void reset(CPU *cpu){
     cpu->SP = 0xFFFE; // Initialize stack pointer
     cpu->cycles = 0; // Reset cycle count
     cpu->ime = 0; // Disable interrupts
+    cpu->halted = 0; // Not halted
+    cpu->ime_enable_delay = 0; // No delay for enabling interrupts
 }
 
 void print_registers(CPU *cpu) {
     DEBUG_PRINTF("Cycles: %u AF: 0x%04X, BC: 0x%04X, DE: 0x%04X, HL: 0x%04X, SP: 0x%04X, PC: 0x%04X\n",
            cpu->cycles, cpu->AF, cpu->BC, cpu->DE, cpu->HL, cpu->SP, cpu->PC);
 }
+
+
 void not_implemented(const char *instruction) {
     #ifdef DEBUG
     printf("\033[0;31m");

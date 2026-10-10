@@ -14,9 +14,12 @@ typedef struct CPU {
     uint16_t SP; // Stack Pointer
     uint64_t cycles; // Cycle count
     uint8_t ime;
+    uint8_t ime_enable_delay;
+
+    uint8_t halted;
 }CPU;
 
-void decode(CPU *cpu, uint8_t opcode, Bus *bus);
+uint8_t decode(CPU *cpu, uint8_t opcode, Bus *bus);
 uint8_t fetch(CPU *cpu, uint8_t *memory);
 uint8_t decode_cb(CPU *cpu, uint8_t opcode, Bus *bus);
 void tick(CPU *cpu, Bus *bus);
@@ -25,3 +28,5 @@ void print_registers(CPU *cpu);
 void push_stack(CPU *cpu, uint16_t value, Bus *bus);
 uint16_t pop_stack(CPU *cpu, Bus *bus);
 void not_implemented(const char *instruction);
+uint8_t get_pending_interrupts(Bus *bus);
+uint8_t service_interrupt(CPU *cpu, Bus *bus, uint8_t pending);
